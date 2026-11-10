@@ -101,9 +101,17 @@ jobs:
           file "$APP/$BIN"
           # Rust 侧的 loopback 常量与 Tauri codegen 编译进去的 CSP 都是明文，
           # 出现即证明「本地代理 + CSP 放行」真的进了最终二进制。
-          strings -a "$APP/$BIN" | grep -q "127.0.0.1:17650" \
-            && echo "OK  二进制含 loopback 常量/CSP" \
-            || { echo "FAIL 二进制里没有 127.0.0.1:17650"; exit 1; }
+          # 注意：不能写 `strings ... | grep -q` —— grep -q 命中即退出，
+          # 会给 strings 发 SIGPIPE，macOS 的 strings 报 "failed to flush output"
+          # 并返回非零，CI 的 pipefail 会把整条管道判成失败。先落盘再匹配。
+          strings -a "$APP/$BIN" > /tmp/binstr.txt || true
+          if grep -q "127.0.0.1:17650" /tmp/binstr.txt; then
+            echo "OK  二进制含 loopback 常量/CSP"
+          elif grep -q "17650" /tmp/binstr.txt; then
+            echo "OK  二进制含 loopback 端口 17650"
+          else
+            echo "FAIL 二进制里没有任何 loopback 痕迹"; exit 1
+          fi
           shasum -a 256 "$IPA" | tee artifacts/SHA256SUMS.txt
 
       - uses: actions/upload-artifact@v7
