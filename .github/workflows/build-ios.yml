@@ -31,12 +31,6 @@ jobs:
           key: ios
       - run: pnpm install --frozen-lockfile
 
-      # Rust 侧预检：iOS 分支的代码（ios_safe_area.rs）只有 target_os="ios" 才编译，
-      # 放进完整 Xcode 打包里要等好几分钟才报错。这里先用 cargo check 提前抓。
-      - name: Rust 预检（iOS target）
-        working-directory: src-tauri
-        run: cargo check --target aarch64-apple-ios --features custom-protocol
-
       # 前端产物是明文（未压缩），可以直接 grep 验证修复确实入包。
       # iOS 的修复全在前端（CSS/TS），二进制里是 brotli 压缩的看不到，
       # 所以这一步是唯一能证明「白块修复真的编进去了」的地方。
@@ -63,6 +57,16 @@ jobs:
           # 字符串字面量与 DOM 属性名不会被改写，用它们才稳定。
           grep -q "100dvh" "$JS"               && echo "OK  JS 里判定了 dvh 支持"      || { echo "FAIL 缺 dvh 判定"; exit 1; }
           grep -q "visualViewport" "$JS"      && echo "OK  dvh 兜底逻辑在"            || { echo "FAIL 缺 viewport 兜底"; exit 1; }
+          # 视口诊断叠层：截图即可读数定位白块问题
+          grep -q "hghub_vpdiag_off" "$JS"     && echo "OK  视口诊断叠层在"            || { echo "FAIL 缺诊断叠层"; exit 1; }
+
+      # Rust 侧预检：iOS 分支的代码（ios_safe_area.rs）只有 target_os="ios" 才编译，
+      # 放进完整 Xcode 打包里要等好几分钟才报错。这里先用 cargo check 提前抓。
+      # 必须在「构建前端」之后 —— generate_context! 宏要求 frontendDist（../dist）已存在，
+      # 否则会 proc macro panicked。
+      - name: Rust 预检（iOS target）
+        working-directory: src-tauri
+        run: cargo check --target aarch64-apple-ios --features custom-protocol
 
       - name: 生成 iOS 工程（带横竖屏 + ATS）
         run: |
