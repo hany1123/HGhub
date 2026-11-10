@@ -67,6 +67,9 @@ jobs:
           # 播放诊断：代理请求现场 + video 元素状态，用来区分「播放器没来请求」
           # 与「请求到了但内容解不开」两种完全不同的故障。
           grep -q "proxy_stat" "$JS"           && echo "OK  代理现场诊断在"            || { echo "FAIL 缺代理现场诊断"; exit 1; }
+          # 播放链路一次性探针：原生 HLS 失败时画面上只有一个转圈，
+          # 探针把播放列表与第一个分片的真实状态写进诊断行。
+          grep -q "probe=m3u8" "$JS"           && echo "OK  播放链路探针在"            || { echo "FAIL 缺播放链路探针"; exit 1; }
 
       # Rust 侧预检：iOS 分支的代码（ios_safe_area.rs）只有 target_os="ios" 才编译，
       # 放进完整 Xcode 打包里要等好几分钟才报错。这里先用 cargo check 提前抓。

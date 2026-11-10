@@ -4,6 +4,7 @@ import { fmtTime, platform, playlist } from "../api";
 import { mediaErrorMessage } from "../mediaErrors";
 import { mediaHost, mediaResource, observeHls, usePlayerDiagnostics } from "../playbackDiagnostics";
 import { usePlaybackActivity } from "../usePlaybackActivity";
+import { probePlaybackChain } from "../viewportDiag";
 import { useSeekInput } from "../useSeekInput";
 import PlaybackLock from "./PlaybackLock";
 import { ICompress, IExpand, ILockF, IPauseF, IPlayF, IVol, IVolMute } from "../icons";
@@ -138,6 +139,15 @@ export default function Player({
       // Safari / 部分 WebView 原生支持 HLS
       video.src = url;
       if (autoPlay) activity.play("native_autoplay", true);
+      // 原生 HLS 失败时画面上只有一个转圈。等 8 秒还没出画面，
+      // 就用 JS 直接拉一次同一个播放地址，把链路每一环的状态写进诊断叠层。
+      if (url.startsWith("http://127.0.0.1")) {
+        window.setTimeout(() => {
+          const v = videoRef.current;
+          if (!v || v.readyState > 0) return;
+          void probePlaybackChain(url);
+        }, 8000);
+      }
     }
 
     return () => {

@@ -127,6 +127,55 @@ function proxyStat(): string {
   return `px=${p.total}/${p.route || "-"}:${p.status}/${p.bytes}B/${p.ms}ms`;
 }
 
+/* ── 一次性播放链路探针 ──
+ *
+ * 原生 HLS（iOS）失败时画面上只有一个转圈，没有任何提示。
+ * 这个探针在「8 秒还没出画面」时，用 JS 直接拉一次同一个播放地址，
+ * 把播放列表与第一个分片的真实状态写进诊断行：
+ *   probe=m3u8=200/1234/ok seg=200/2849152
+ * 能拿到 m3u8 → 代理与上游都通，问题在原生播放器；
+ * 拿不到 → 代理或上游有问题，状态码会直接写出来。
+ */
+let probeText = "";
+
+export function setProbe(text: string): void {
+  probeText = text;
+}
+
+export function getProbe(): string {
+  return probeText;
+}
+
+/** 一次性探测播放链路：播放列表 + 第一个分片，结果写进诊断叠层。
+ *
+ * iOS 走原生 HLS（AVFoundation）时，失败的表现只有一个转圈 —— 没有报错、
+ * 没有提示，光看画面完全分不清是「代理没通」「上游挂了」还是「播放器自己的问题」。
+ * 这里在确认没出画面之后，用 JS 直接拉一次同一个地址，把每一环的真实状态打出来：
+ *   probe=m3u8=200/1234/ok seg=200/2849152
+ * 能拿到 m3u8 → 代理与上游都通，问题在原生播放器；拿不到 → 状态码直接写在这里。
+ */
+export async function probePlaybackChain(url: string): Promise<void> {
+  try {
+    const r1 = await fetch(url);
+    const txt = await r1.text();
+    const ok = txt.startsWith("#EXTM3U");
+    if (!ok) {
+      setProbe(`probe=m3u8=${r1.status}/${txt.length}/bad`);
+      return;
+    }
+    const seg = txt.split("\n").find((l) => l && !l.startsWith("#") && l.includes("/seg?u="));
+    if (!seg) {
+      setProbe(`probe=m3u8=${r1.status}/${txt.length}/ok seg=none`);
+      return;
+    }
+    const r2 = await fetch(seg.trim());
+    const buf = await r2.arrayBuffer();
+    setProbe(`probe=m3u8=${r1.status}/${txt.length}/ok seg=${r2.status}/${buf.byteLength}`);
+  } catch (e) {
+    setProbe(`probe=throw/${String((e as Error).message).slice(0, 40)}`);
+  }
+}
+
 export function installViewportDiag(): void {
   if (typeof document === "undefined" || document.getElementById("hg-vp-diag")) return;
 
@@ -137,10 +186,12 @@ export function installViewportDiag(): void {
 
   const render = () => {
     const s = readViewportSnapshot();
+    const probe = getProbe();
     el.textContent =
       `b=${buildNo()} innerH=${s.innerH} vvH=${s.vvH} scrH=${s.scrH} docH=${s.docH} ` +
       `sab=${s.sab} sat=${s.sat} dpr=${s.dpr}\n` +
-      `${proxyStat()} ${videoStat()}`;
+      `${proxyStat()} ${videoStat()}` +
+      (probe ? `\n${probe}` : "");
   };
 
   render();
