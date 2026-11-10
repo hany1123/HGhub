@@ -31,6 +31,25 @@ jobs:
           key: ios
       - run: pnpm install --frozen-lockfile
 
+      # 前端产物是明文（未压缩），可以直接 grep 验证修复确实入包。
+      # iOS 的修复全在前端（CSS/TS），二进制里是 brotli 压缩的看不到，
+      # 所以这一步是唯一能证明「白块修复真的编进去了」的地方。
+      - name: 构建前端并校验 iOS 修复已入包
+        shell: bash
+        run: |
+          pnpm build
+          echo "--- dist 产物 ---"
+          ls -la dist/assets | head
+          CSS=$(ls dist/assets/*.css | head -1)
+          echo "CSS: $CSS"
+          echo "--- 关键断言 ---"
+          grep -q "100dvh" "$CSS"            && echo "OK  html 用 100dvh"            || { echo "FAIL 缺 100dvh"; exit 1; }
+          grep -q "safe-area-inset-bottom" "$CSS" && echo "OK  底部安全区补偿"            || { echo "FAIL 缺 safe-area-inset-bottom"; exit 1; }
+          grep -q "127.0.0.1:17650" "$CSS"   && echo "OK  CSP 放行本地代理"          || { echo "FAIL CSP 未放行本地端口"; exit 1; }
+          JS=$(ls dist/assets/*.js | head -1)
+          grep -q "127.0.0.1:17650" "$JS"    && echo "OK  前端 LOCAL 指向 loopback"   || { echo "FAIL 前端 LOCAL 未改"; exit 1; }
+          grep -q "supportsDvh" "$JS"        && echo "OK  dvh 兜底逻辑在"            || { echo "FAIL 缺 dvh 兜底"; exit 1; }
+
       - name: 生成 iOS 工程（带横竖屏 + ATS）
         run: |
           pnpm tauri ios init --ci
