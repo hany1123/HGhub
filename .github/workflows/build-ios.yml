@@ -45,6 +45,12 @@ jobs:
             /usr/libexec/PlistBuddy -c "Delete :NSAppTransportSecurity" "$plist" 2>/dev/null || true
             /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity dict" "$plist"
             /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity:NSAllowsArbitraryLoads bool true" "$plist"
+            # 媒体走 loopback HTTP 代理（127.0.0.1:17650）：原生 HLS 播放器（AVFoundation）
+            # 有自己的网络栈，必须显式放行本地网络的明文 http，否则会被 ATS 拦掉。
+            /usr/libexec/PlistBuddy -c "Delete :NSAppTransportSecurity:NSAllowsLocalNetworking" "$plist" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity:NSAllowsLocalNetworking bool true" "$plist"
+            /usr/libexec/PlistBuddy -c "Delete :NSLocalNetworkUsageDescription" "$plist" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add :NSLocalNetworkUsageDescription string 本应用使用本机网络回环地址提供视频播放代理。" "$plist" 2>/dev/null || true
           done
 
       - name: 构建并打包 ipa
@@ -52,6 +58,25 @@ jobs:
         env:
           APP_VERSION: ${{ github.run_number }}
         run: bash scripts/build-ios-unsigned.sh "$APP_VERSION"
+
+      - name: 校验 ipa
+        shell: bash
+        run: |
+          IPA=$(ls artifacts/*.ipa | head -1)
+          echo "IPA: $IPA"
+          unzip -tq "$IPA"
+          rm -rf /tmp/ipacheck && mkdir -p /tmp/ipacheck
+          unzip -q "$IPA" -d /tmp/ipacheck
+          APP=$(find /tmp/ipacheck/Payload -maxdepth 1 -name "*.app" | head -1)
+          echo "APP: $APP"
+          for key in CFBundleIdentifier CFBundleShortVersionString MinimumOSVersion; do
+            /usr/libexec/PlistBuddy -c "Print :$key" "$APP/Info.plist"
+          done
+          # 确认 ATS 已放行本地网络（iOS 16 的原生 HLS 走 loopback http，没这条会被拦）
+          /usr/libexec/PlistBuddy -c "Print :NSAppTransportSecurity:NSAllowsLocalNetworking" "$APP/Info.plist"
+          BIN=$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$APP/Info.plist")
+          file "$APP/$BIN"
+          shasum -a 256 "$IPA" | tee artifacts/SHA256SUMS.txt
 
       - uses: actions/upload-artifact@v7
         with:
