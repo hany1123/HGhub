@@ -44,6 +44,10 @@ jobs:
           echo "CSS: $CSS"
           echo "--- 关键断言 ---"
           grep -q "100dvh" "$CSS"            && echo "OK  html 用 100dvh"            || { echo "FAIL 缺 100dvh"; exit 1; }
+          # esbuild 的 CSS minifier 会删掉「被后面同属性覆盖」的声明，
+          # 若源码写成 height:100vh; height:100dvh; 连续声明，100vh 兜底会凭空消失，
+          # iOS 15.0~15.3（不支持 dvh）就退回 auto 高度又露白。必须两个都在。
+          grep -q "100vh" "$CSS"             && echo "OK  保留 100vh 兜底"            || { echo "FAIL 缺 100vh 兜底"; exit 1; }
           grep -q "safe-area-inset-bottom" "$CSS" && echo "OK  底部安全区补偿"            || { echo "FAIL 缺 safe-area-inset-bottom"; exit 1; }
           # CSP 不在前端产物里 —— 它配在 tauri.conf.json，由 Tauri codegen 编译进二进制。
           grep -q "127.0.0.1:17650" src-tauri/tauri.conf.json && echo "OK  CSP 放行本地代理" || { echo "FAIL CSP 未放行本地端口"; exit 1; }

@@ -114,12 +114,18 @@ html.theme-light {
    所以先给一个 100vh 兜底，再用 @supports 升级成 100dvh。 */
 html {
   height: 100vh;
-  height: 100dvh;
   padding-bottom: env(safe-area-inset-bottom);
   box-sizing: border-box;
   background: var(--p-canvas);
   overflow: hidden;
   overscroll-behavior: none;
+}
+/* 必须用 @supports 升级，不能写成 `height:100vh; height:100dvh;` 的连续声明 ——
+   esbuild 的 CSS minifier 会把「被后面同属性覆盖」的声明直接删掉，
+   100vh 兜底会凭空消失，iOS 15.0~15.3 上（不支持 dvh）就退回 auto 高度又露白。
+   @supports 是独立块，minifier 不会跨块合并。 */
+@supports (height: 100dvh) {
+  html { height: 100dvh; }
 }
 body, #root {
   height: 100%;
