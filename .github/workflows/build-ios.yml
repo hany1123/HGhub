@@ -45,7 +45,8 @@ jobs:
           echo "--- 关键断言 ---"
           grep -q "100dvh" "$CSS"            && echo "OK  html 用 100dvh"            || { echo "FAIL 缺 100dvh"; exit 1; }
           grep -q "safe-area-inset-bottom" "$CSS" && echo "OK  底部安全区补偿"            || { echo "FAIL 缺 safe-area-inset-bottom"; exit 1; }
-          grep -q "127.0.0.1:17650" "$CSS"   && echo "OK  CSP 放行本地代理"          || { echo "FAIL CSP 未放行本地端口"; exit 1; }
+          # CSP 不在前端产物里 —— 它配在 tauri.conf.json，由 Tauri codegen 编译进二进制。
+          grep -q "127.0.0.1:17650" src-tauri/tauri.conf.json && echo "OK  CSP 放行本地代理" || { echo "FAIL CSP 未放行本地端口"; exit 1; }
           JS=$(ls dist/assets/*.js | head -1)
           grep -q "127.0.0.1:17650" "$JS"    && echo "OK  前端 LOCAL 指向 loopback"   || { echo "FAIL 前端 LOCAL 未改"; exit 1; }
           grep -q "supportsDvh" "$JS"        && echo "OK  dvh 兜底逻辑在"            || { echo "FAIL 缺 dvh 兜底"; exit 1; }
@@ -95,6 +96,11 @@ jobs:
           /usr/libexec/PlistBuddy -c "Print :NSAppTransportSecurity:NSAllowsLocalNetworking" "$APP/Info.plist"
           BIN=$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$APP/Info.plist")
           file "$APP/$BIN"
+          # Rust 侧的 loopback 常量与 Tauri codegen 编译进去的 CSP 都是明文，
+          # 出现即证明「本地代理 + CSP 放行」真的进了最终二进制。
+          strings -a "$APP/$BIN" | grep -q "127.0.0.1:17650" \
+            && echo "OK  二进制含 loopback 常量/CSP" \
+            || { echo "FAIL 二进制里没有 127.0.0.1:17650"; exit 1; }
           shasum -a 256 "$IPA" | tee artifacts/SHA256SUMS.txt
 
       - uses: actions/upload-artifact@v7
