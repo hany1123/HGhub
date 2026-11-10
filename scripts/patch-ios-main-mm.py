@@ -51,13 +51,14 @@ IMPL = """
 
 __attribute__((used)) extern "C" void hg_disable_webview_safe_area(void* webview) {
   if (webview == NULL) return;
-  // 用 C 风格 cast 而不是 __bridge：ARC 与非 ARC 下都能编译，少一个变量。
-  WKWebView* wv = (WKWebView*)webview;
+  // Tauri 的 Xcode 工程开了 ARC，void* → ObjC 指针必须用 __bridge。
+  WKWebView* wv = (__bridge WKWebView*)webview;
   wv.scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
 }
 
-// 第二层保险：swizzle WKWebView 的创建入口，任何 WKWebView 一诞生就设好，
-// 不依赖谁在什么时候调用。
+// 第二层保险：swizzle WKWebView 加入 window 的时机，任何 WKWebView 一进 view 层级就设好。
+// 这里刻意不用 initWithFrame:configuration: —— ARC 规定「init family」之外的方法
+// 不允许给 self 赋值，方法名改对很啰嗦；didMoveToWindow 没有这个约束，更省事也更稳。
 @interface WKWebView (HGSafeArea)
 + (void)hg_disableSafeAreaInsets;
 @end
@@ -72,8 +73,8 @@ __attribute__((used)) extern "C" void hg_disable_webview_safe_area(void* webview
   static dispatch_once_t once;
   dispatch_once(&once, ^{
     Class cls = [WKWebView class];
-    SEL origSel = @selector(initWithFrame:configuration:);
-    SEL swzSel = @selector(hg_initWithFrame:configuration:);
+    SEL origSel = @selector(didMoveToWindow);
+    SEL swzSel = @selector(hg_didMoveToWindow);
     Method orig = class_getInstanceMethod(cls, origSel);
     Method swz = class_getInstanceMethod(cls, swzSel);
     if (orig != NULL && swz != NULL) {
@@ -82,13 +83,12 @@ __attribute__((used)) extern "C" void hg_disable_webview_safe_area(void* webview
   });
 }
 
-- (instancetype)hg_initWithFrame:(CGRect)frame configuration:(WKWebViewConfiguration *)configuration {
-  // 交换之后，这里的 hg_initWithFrame:configuration: 就是原来的实现。
-  self = [self hg_initWithFrame:frame configuration:configuration];
-  if (self != nil) {
+- (void)hg_didMoveToWindow {
+  // 交换之后，这里的 hg_didMoveToWindow 就是原来的实现。
+  [self hg_didMoveToWindow];
+  if (self.window != nil) {
     self.scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
   }
-  return self;
 }
 
 @end

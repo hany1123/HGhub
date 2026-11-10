@@ -144,10 +144,10 @@ jobs:
             echo "FAIL 二进制里没有任何 loopback 痕迹"; exit 1
           fi
           # 原生安全区修复必须进最终二进制。
-          # 断言用 ObjC 方法名（hg_initWithFrame...）：ObjC 方法名一定在 __objc_methname 段，
+          # 断言用 ObjC 方法名（hg_didMoveToWindow）：ObjC 方法名一定在 __objc_methname 段，
           # 不会被 dead-strip；而 C 符号 hg_disable_webview_safe_area 是「有则更好」的备用路径，
           # 可能被链接期 strip，拿它做硬断言会假失败。
-          grep -q "hg_initWithFrame" /tmp/binstr.txt \
+          grep -q "hg_didMoveToWindow" /tmp/binstr.txt \
             && echo "OK  二进制含安全区修复（swizzle）" \
             || { echo "FAIL 二进制里没有安全区修复符号"; exit 1; }
           if grep -q "hg_disable_webview_safe_area" /tmp/binstr.txt; then
