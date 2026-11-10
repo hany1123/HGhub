@@ -7,17 +7,30 @@ import "./index.css";
 import { initPlaybackLog, installPlaybackPageEvents, tracePlayback } from "./playbackDiagnostics";
 import { initAutoLine } from "./autoLine";
 import { APP_VERSION, LOCAL, logLine, platform, webviewVersion } from "./api";
+import { installViewportDiag, readViewportSnapshot } from "./viewportDiag";
 import Hls from "hls.js";
 installPlaybackPageEvents();
 void initPlaybackLog();
 /* 自动选线：启动时比一次 com / ai，之后跟着网络变化复查 */
 initAutoLine();
+
+/* 视口诊断叠层：把 innerH/vvH/scrH/docH/sab 直接画在屏幕顶部，截图即可读数。
+   底部白块那类问题光看画面分不清是「html 高度不够」还是「WKWebView 视口本身矮一截」，
+   这两组数值一摆出来就能定位。localStorage 设 hghub_vpdiag_off=1 可关掉。 */
+try {
+  if (localStorage.getItem("hghub_vpdiag_off") !== "1") installViewportDiag();
+} catch (e) {
+  /* 隐私模式下 localStorage 可能抛错，忽略即可 */
+}
+
 /* 环境指纹：写进始终记录的 debug.log。用户复制诊断时不用再自报版本、平台、内核版本 */
+const vp = readViewportSnapshot();
 logLine(
   `[env] ver=${APP_VERSION} platform=${platform} webview=${webviewVersion} ` +
     `engine=${Hls.isSupported() ? "hls.js" : "native"} ` +
     `mss=${"MediaSource" in window ? "y" : "n"} media=${LOCAL} ` +
-    `screen=${screen.width}x${screen.height} dpr=${devicePixelRatio} lang=${navigator.language}`,
+    `screen=${screen.width}x${screen.height} dpr=${devicePixelRatio} lang=${navigator.language} ` +
+    `innerH=${vp.innerH} vvH=${vp.vvH} docH=${vp.docH} sab=${vp.sab} sat=${vp.sat}`,
 );
 
 /* 环境指纹也进结构化日志（开诊断后不会只有一行空跑） */

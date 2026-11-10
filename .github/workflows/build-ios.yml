@@ -31,6 +31,12 @@ jobs:
           key: ios
       - run: pnpm install --frozen-lockfile
 
+      # Rust 侧预检：iOS 分支的代码（ios_safe_area.rs）只有 target_os="ios" 才编译，
+      # 放进完整 Xcode 打包里要等好几分钟才报错。这里先用 cargo check 提前抓。
+      - name: Rust 预检（iOS target）
+        working-directory: src-tauri
+        run: cargo check --target aarch64-apple-ios --features custom-protocol
+
       # 前端产物是明文（未压缩），可以直接 grep 验证修复确实入包。
       # iOS 的修复全在前端（CSS/TS），二进制里是 brotli 压缩的看不到，
       # 所以这一步是唯一能证明「白块修复真的编进去了」的地方。
@@ -80,6 +86,23 @@ jobs:
             /usr/libexec/PlistBuddy -c "Add :NSLocalNetworkUsageDescription string 本应用使用本机网络回环地址提供视频播放代理。" "$plist" 2>/dev/null || true
           done
 
+      # 底部白块的真正根因在原生层：WKWebView 内部 scroll view 默认 .automatic，
+      # 会继承安全区 inset 把 layout viewport 压矮，页面底部露白。注入一段 ObjC
+      # 把 contentInsetAdjustmentBehavior 设成 .never（Rust 侧只留 extern "C" 声明）。
+      - name: 注入 iOS 安全区修复到 main.mm
+        shell: bash
+        run: |
+          MAIN_MM=$(find src-tauri/gen/apple -name "main.mm" | head -1)
+          if [ -z "$MAIN_MM" ]; then echo "FAIL 找不到 main.mm"; exit 1; fi
+          echo "main.mm: $MAIN_MM"
+          python3 scripts/patch-ios-main-mm.py "$MAIN_MM"
+          grep -q "hg_disable_webview_safe_area" "$MAIN_MM" \
+            && echo "OK  main.mm 已注入安全区修复" \
+            || { echo "FAIL 注入失败"; exit 1; }
+          grep -q "UIScrollViewContentInsetAdjustmentNever" "$MAIN_MM" \
+            && echo "OK  设为 ContentInsetAdjustmentNever" \
+            || { echo "FAIL 没找到 Never 设置"; exit 1; }
+
       - name: 构建并打包 ipa
         shell: bash
         env:
@@ -116,6 +139,11 @@ jobs:
           else
             echo "FAIL 二进制里没有任何 loopback 痕迹"; exit 1
           fi
+          # 原生安全区修复的符号必须进最终二进制：
+          # ObjC 函数名在 Mach-O 符号表里，Rust 侧的 extern 声明也只留这个名字。
+          grep -q "hg_disable_webview_safe_area" /tmp/binstr.txt \
+            && echo "OK  二进制含安全区修复符号" \
+            || { echo "FAIL 二进制里没有 hg_disable_webview_safe_area"; exit 1; }
           shasum -a 256 "$IPA" | tee artifacts/SHA256SUMS.txt
 
       - uses: actions/upload-artifact@v7

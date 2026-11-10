@@ -2,6 +2,8 @@ mod api;
 mod lines;
 mod local_http;
 mod logging;
+#[cfg(target_os = "ios")]
+mod ios_safe_area;
 #[cfg(target_os = "macos")]
 mod macos_titlebar;
 mod media;
@@ -70,7 +72,19 @@ pub fn run() {
             // macOS 主窗口在此创建：先按系统红绿灯尺寸算出居中位置（见 macos_titlebar.rs）
             #[cfg(target_os = "macos")]
             macos_titlebar::create_main_window(app)?;
+            // iOS：WKWebView 内部 scroll view 默认会自动继承安全区 inset，
+            // 把文档 layout viewport 压矮「上+下安全区」那么多，页面底部画不到的地方
+            // 直接露出 WKWebView 的白底 —— 就是那条底部白块。关掉它，改由 CSS 避让。
+            #[cfg(target_os = "ios")]
+            if let Some(w) = app.get_webview_window("main") {
+                ios_safe_area::apply_window(&w);
+            }
             Ok(())
+        })
+        .on_page_load(|webview, _payload| {
+            // 再兜一次：on_page_load 时 webview 必定已创建。
+            // （.never 是幂等的，重复设置无副作用；这一处保证页面首帧也拿到正确的 viewport。）
+            ios_safe_area::apply(&webview);
         })
         .plugin(
             tauri::plugin::Builder::<_, ()>::new("navigation-guard")
