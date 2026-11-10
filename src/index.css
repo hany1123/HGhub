@@ -91,7 +91,42 @@ html.theme-light {
   --color-on-danger: var(--p-on-danger);
 }
 
-html, body, #root { height: 100%; overflow: hidden; overscroll-behavior: none; }
+/* 根容器高度 —— 修 iOS 底部那条白块。
+ *
+ * 症状：iOS 上底部露出一截空白（横屏再竖屏才恢复）。
+ *
+ * 两个成因：
+ * 1. WKWebView 的 layout viewport 在工具栏收起 / 键盘弹出后不更新，
+ *    `height: 100%` 会停在偏小的旧值 → 根容器比屏幕矮 → 露出下层。
+ *    改用 `100dvh`（动态视口高度），它会跟着可视区域变化。
+ * 2. iOS 的 `dvh` 不含底部 home indicator 安全区，所以根容器仍会矮一截；
+ *    用 `padding-bottom: env(safe-area-inset-bottom)` 把它补回来。
+ *    这一段 padding 属于 html，背景色就是画布色，不会露出白色。
+ *
+ * `html` 必须自己设背景色：根容器高度不足时露出的正是 html 的背景，
+ * 不设就是 WKWebView 默认的白底（底部白块就是这么来的）。
+ *
+ * `box-sizing: border-box` 关键：padding 算进高度里，内容盒才正好是可用区，
+ * 否则 body 会被撑出去一截。
+ */
+/* `dvh` 需要 iOS 15.4+（Safari 15.4）。老系统上 100dvh 会被当成无效值丢弃，
+   整条声明失效 → 退回默认的 auto 高度 → 又露白。
+   所以先给一个 100vh 兜底，再用 @supports 升级成 100dvh。 */
+html {
+  height: 100vh;
+  height: 100dvh;
+  padding-bottom: env(safe-area-inset-bottom);
+  box-sizing: border-box;
+  background: var(--p-canvas);
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+body, #root {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
 body {
   margin: 0;
   background: var(--p-canvas);

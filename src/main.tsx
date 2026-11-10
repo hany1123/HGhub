@@ -40,17 +40,24 @@ window.addEventListener("unhandledrejection", (e) => {
   report("reject", String((e.reason && (e.reason.stack || e.reason.message)) || e.reason));
 });
 
-/* iOS: WKWebView 工具栏收起/键盘弹出后 layout viewport 高度可能不更新，
-   页面底部会留一截空白（旋转一下才恢复的根源）。
-   把 html 高度钉在可视高度上，并在旋转后重新校准。 */
+/* iOS: WKWebView 的 layout viewport 在工具栏收起 / 键盘弹出后不更新，
+   `height: 100%` 会停在偏小的旧值，底部露出一截空白（横屏再竖屏才恢复的根源）。
+   index.css 已改用 `100dvh` + `env(safe-area-inset-bottom)` 处理，这里只做兜底：
+   万一 dvh 不可用（iOS < 15.4），再把高度钉到 window.innerHeight。
+   注意不能钉 visualViewport.height —— 它不含底部 home indicator 安全区，
+   钉上去根容器会矮一截，底部照样露白。 */
 if (platform === "ios" && window.visualViewport) {
-  const apply = () => {
-    const h = window.visualViewport?.height;
-    if (h) document.documentElement.style.height = `${h}px`;
-  };
-  apply();
-  window.visualViewport.addEventListener("resize", apply);
-  window.addEventListener("orientationchange", () => setTimeout(apply, 150));
+  const supportsDvh = CSS.supports("height", "100dvh");
+  if (!supportsDvh) {
+    const apply = () => {
+      // innerHeight 是 layout viewport 高度，含安全区；取它才不会矮一截。
+      const h = window.innerHeight || window.visualViewport?.height;
+      if (h) document.documentElement.style.height = `${h}px`;
+    };
+    apply();
+    window.visualViewport.addEventListener("resize", apply);
+    window.addEventListener("orientationchange", () => setTimeout(apply, 150));
+  }
 }
 
 ReactDOM.createRoot(document.getElementById("root")!).render(

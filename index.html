@@ -10,7 +10,14 @@
         if (localStorage.getItem("hghub_theme") === "light") document.documentElement.classList.add("theme-light");
       } catch (e) {}
     </script>
-    <style>html,body{background:#1a1a1a}html.theme-light,html.theme-light body{background:#f3f3f3}</style>
+    <!-- 首屏防白闪：样式表还没加载时 html 默认是白的，先把背景压住。
+         这里的 html 背景必须与 index.css 的 --p-canvas 一致，
+         否则根容器高度不足时露出的底色会跟画布对不上（iOS 底部白块）。 -->
+    <style>
+      :root { --p-canvas: #1a1a1a; }
+      html.theme-light { --p-canvas: #f3f3f3; }
+      html, body { background: var(--p-canvas); }
+    </style>
   </head>
   <body>
     <div id="root"></div>

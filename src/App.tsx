@@ -215,9 +215,15 @@ function ShellInner({ collapsed, theater }: { collapsed: boolean; theater: boole
 
 /* ============ 移动端（无壳） ============ */
 function MobileShell() {
+  const { platform } = useStore();
   return (
-    <div className="absolute inset-0 flex flex-col bg-canvas plat-android"
-      style={{ "--sat": "max(env(safe-area-inset-top), 8px)", "--sab": "max(env(safe-area-inset-bottom), 6px)" } as React.CSSProperties}>
+    /* 平台类名要用真实的 platform：写死 plat-android 会让 iOS 拿不到
+       .plat-ios 的圆角变量与 -webkit-touch-callout 等样式。
+       底部安全区已由 index.css 的 html padding-bottom 统一让出，
+       这里再给底栏加 --sab 会重复计算，把底部留白交给 html。 */
+    <div
+      className={`absolute inset-0 flex flex-col bg-canvas plat-${platform}`}
+      style={{ "--sat": "max(env(safe-area-inset-top), 8px)", "--sab": "0px" } as React.CSSProperties}>
       <div className="relative flex-1 min-h-0">
         <AppBody />
       </div>
