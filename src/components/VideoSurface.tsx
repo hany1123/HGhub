@@ -4,7 +4,7 @@ import { isLocalMedia, platform, playlist } from "../api";
 import { mediaErrorMessage } from "../mediaErrors";
 import { mediaHost, mediaResource, observeHls, usePlayerDiagnostics } from "../playbackDiagnostics";
 import { usePlaybackActivity } from "../usePlaybackActivity";
-import { probePlaybackChain } from "../viewportDiag";
+import { diagEnabled, probePlaybackChain } from "../viewportDiag";
 
 export type VideoHandle = {
   el: () => HTMLVideoElement | null;
@@ -175,7 +175,8 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
       if (autoPlay) activity.play("native_autoplay", true);
       // 原生 HLS 失败时画面上只有一个转圈。等 8 秒还没出画面，
       // 就用 JS 直接拉一次同一个播放地址，把链路每一环的状态写进诊断叠层。
-      if (useHls && url.startsWith("http://127.0.0.1")) {
+      // 只在诊断叠层开着时才做 —— 探针要真的下多分片，不该在正常使用里白耗流量。
+      if (useHls && url.startsWith("http://127.0.0.1") && diagEnabled()) {
         window.setTimeout(() => {
           const v = videoRef.current;
           if (!v || v.readyState > 0) return;

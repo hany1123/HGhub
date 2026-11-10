@@ -59,8 +59,16 @@ jobs:
           # 字符串字面量与 DOM 属性名不会被改写，用它们才稳定。
           grep -q "100dvh" "$JS"               && echo "OK  JS 里判定了 dvh 支持"      || { echo "FAIL 缺 dvh 判定"; exit 1; }
           grep -q "visualViewport" "$JS"      && echo "OK  dvh 兜底逻辑在"            || { echo "FAIL 缺 viewport 兜底"; exit 1; }
-          # 视口诊断叠层：截图即可读数定位白块问题
-          grep -q "hghub_vpdiag_off" "$JS"     && echo "OK  视口诊断叠层在"            || { echo "FAIL 缺诊断叠层"; exit 1; }
+          # 视口诊断叠层：截图即可读数定位白块问题。
+          # 开关名从 hghub_vpdiag_off 改成了 hghub_vpdiag（正向开关，默认关），
+          # 断言必须带引号，否则前缀匹配会把旧的 off 名字也算进去。
+          grep -q '"hghub_vpdiag"' "$JS"    && echo "OK  视口诊断叠层在"            || { echo "FAIL 缺诊断叠层"; exit 1; }
+          # 诊断叠层**默认必须关闭** —— 它盖在屏幕最顶部，安装界面不该有那串字。
+          # 这是源码级断言（产物里会被 mangle，grep 不出来）。
+          # 用宽松正则，别写死空格：源码是 `if (diagEnabled()) installViewportDiag();`
+          grep -Eq "if *\( *diagEnabled\(\) *\) *installViewportDiag\(\)" src/main.tsx \
+            && echo "OK  诊断叠层默认关闭" \
+            || { echo "FAIL 诊断叠层不是默认关闭"; exit 1; }
           # 诊断行里的构建号：手机上装的是哪个包一眼可辨（版本号永远是 1.2.14）。
           # 必须是带引号的独立字符串 "r<run_number>"，否则 grep 会误命中别的数字。
           grep -q "\"r${BUILD_NO}\"" "$JS"     && echo "OK  构建号 r${BUILD_NO} 已注入" || { echo "FAIL 构建号没编进去"; exit 1; }
@@ -126,11 +134,32 @@ jobs:
         shell: bash
         env:
           APP_VERSION: ${{ github.run_number }}
+          # 必须和上面「构建前端」步骤给同一个值：
+          # `tauri ios build` 会触发 tauri.conf.json 里的 beforeBuildCommand（pnpm build），
+          # 它会**重新构建一次前端覆盖 dist/**。这一步没有 BUILD_NO 的话，
+          # 打进 IPA 的就是另一份产物（构建号会变成 rlocal），
+          # 上面那些针对 dist/ 的断言验的就不是最终进包的那份了 —— 这个坑真的踩过。
+          BUILD_NO: ${{ github.run_number }}
         run: bash scripts/build-ios-unsigned.sh "$APP_VERSION"
 
       - name: 校验 ipa
         shell: bash
+        env:
+          BUILD_NO: ${{ github.run_number }}
         run: |
+          # ===== 打包后复核 =====
+          # `tauri ios build` 重跑过一次 beforeBuildCommand，dist/ 已被覆盖成
+          # **真正进 IPA 的那份**前端。必须在这里再断言一遍，
+          # 否则前面「构建前端」步骤验的是旧产物，等于没验。
+          JS2=$(ls dist/assets/*.js | head -1)
+          echo "复核产物: $JS2"
+          grep -q "\"r${BUILD_NO}\"" "$JS2" \
+            && echo "OK  最终入包前端带构建号 r${BUILD_NO}" \
+            || { echo "FAIL 最终入包前端没有构建号（beforeBuildCommand 覆盖了 dist/）"; exit 1; }
+          # 诊断叠层默认必须关闭：安装界面顶部不能有那串字。
+          grep -q '"hghub_vpdiag"' "$JS2" \
+            && echo "OK  诊断叠层开关在" \
+            || { echo "FAIL 缺诊断叠层开关"; exit 1; }
           IPA=$(ls artifacts/*.ipa | head -1)
           echo "IPA: $IPA"
           unzip -tq "$IPA"

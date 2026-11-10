@@ -7,24 +7,19 @@ import "./index.css";
 import { initPlaybackLog, installPlaybackPageEvents, tracePlayback } from "./playbackDiagnostics";
 import { initAutoLine } from "./autoLine";
 import { APP_VERSION, LOCAL, logLine, platform, webviewVersion } from "./api";
-import { buildNo, installViewportDiag, readViewportSnapshot } from "./viewportDiag";
+import { buildNo, diagEnabled, installViewportDiag, readViewportSnapshot } from "./viewportDiag";
 import Hls from "hls.js";
 installPlaybackPageEvents();
 void initPlaybackLog();
 /* 自动选线：启动时比一次 com / ai，之后跟着网络变化复查 */
 initAutoLine();
 
-/* 视口诊断叠层：把 innerH/vvH/scrH/docH/sab 直接画在屏幕顶部，截图即可读数。
-   底部白块那类问题光看画面分不清是「html 高度不够」还是「WKWebView 视口本身矮一截」，
-   这两组数值一摆出来就能定位。行首 b= 是 CI 构建号，用来确认装的是哪个包
-   （版本号永远是 1.2.14，光看版本号分不出来）。
-   localStorage 设 hghub_vpdiag_off=1 可关掉。 */
-try {
-  if (localStorage.getItem("hghub_vpdiag_off") !== "1") installViewportDiag();
-} catch (e) {
-  // localStorage 不可用（隐私模式等）时也要装诊断层，否则更难查
-  installViewportDiag();
-}
+/* 视口 / 播放诊断叠层：把 innerH/vvH/scrH/docH/sab 与代理现场直接画在屏幕顶部，
+   截图即可读数，不用猜。底部白块、视频转圈这类问题光看画面分不清成因，
+   这两组数值一摆出来就能定位。
+   **默认关闭** —— 它是盖在屏幕最顶部的，正常使用不该看到这一串字。
+   要排查时：localStorage.setItem("hghub_vpdiag", "1") 后重启 App。 */
+if (diagEnabled()) installViewportDiag();
 
 /* 环境指纹：写进始终记录的 debug.log。用户复制诊断时不用再自报版本、平台、内核版本 */
 const vp = readViewportSnapshot();

@@ -69,6 +69,23 @@ export function buildNo(): string {
   }
 }
 
+/** 诊断叠层总开关。
+ *
+ * 默认**关** —— 它是盖在屏幕最顶部的一行黑底白字，正常使用不该看到。
+ * 需要排查时：localStorage.setItem("hghub_vpdiag", "1") 后重启 App。
+ *
+ * 正向开关（而不是「关掉才不显示」），是因为默认必须是干净界面：
+ * 之前用 `hghub_vpdiag_off` 反向逻辑时，一旦 localStorage 读取抛异常，
+ * 兜底分支把诊断层又装上了，用户莫名其妙看到一串字。
+ */
+export function diagEnabled(): boolean {
+  try {
+    return localStorage.getItem("hghub_vpdiag") === "1";
+  } catch {
+    return false;
+  }
+}
+
 export function readViewportSnapshot(): ViewportSnapshot {
   const probe = document.createElement("div");
   probe.style.cssText =
