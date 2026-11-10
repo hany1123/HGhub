@@ -36,6 +36,8 @@ jobs:
       # 所以这一步是唯一能证明「白块修复真的编进去了」的地方。
       - name: 构建前端并校验 iOS 修复已入包
         shell: bash
+        env:
+          BUILD_NO: ${{ github.run_number }}
         run: |
           pnpm build
           echo "--- dist 产物 ---"
@@ -59,6 +61,12 @@ jobs:
           grep -q "visualViewport" "$JS"      && echo "OK  dvh 兜底逻辑在"            || { echo "FAIL 缺 viewport 兜底"; exit 1; }
           # 视口诊断叠层：截图即可读数定位白块问题
           grep -q "hghub_vpdiag_off" "$JS"     && echo "OK  视口诊断叠层在"            || { echo "FAIL 缺诊断叠层"; exit 1; }
+          # 诊断行里的构建号：手机上装的是哪个包一眼可辨（版本号永远是 1.2.14）。
+          # 必须是带引号的独立字符串 "r<run_number>"，否则 grep 会误命中别的数字。
+          grep -q "\"r${BUILD_NO}\"" "$JS"     && echo "OK  构建号 r${BUILD_NO} 已注入" || { echo "FAIL 构建号没编进去"; exit 1; }
+          # 播放诊断：代理请求现场 + video 元素状态，用来区分「播放器没来请求」
+          # 与「请求到了但内容解不开」两种完全不同的故障。
+          grep -q "proxy_stat" "$JS"           && echo "OK  代理现场诊断在"            || { echo "FAIL 缺代理现场诊断"; exit 1; }
 
       # Rust 侧预检：iOS 分支的代码（ios_safe_area.rs）只有 target_os="ios" 才编译，
       # 放进完整 Xcode 打包里要等好几分钟才报错。这里先用 cargo check 提前抓。
@@ -106,6 +114,10 @@ jobs:
           grep -q "UIScrollViewContentInsetAdjustmentNever" "$MAIN_MM" \
             && echo "OK  设为 ContentInsetAdjustmentNever" \
             || { echo "FAIL 没找到 Never 设置"; exit 1; }
+          # 兜底保险：webview 没铺满时，露出来的原生视图刷成画布色（深色）而不是系统白底
+          grep -q "HGPaintBackdrop" "$MAIN_MM" \
+            && echo "OK  背景兜底保险在" \
+            || { echo "FAIL 缺背景兜底"; exit 1; }
 
       - name: 构建并打包 ipa
         shell: bash

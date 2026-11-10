@@ -49,11 +49,35 @@ IMPL = """
 // 用 __attribute__((used)) 是为了防止 release 构建的 dead-strip 把这个符号删掉 ——
 // Rust 侧要用 dlsym 在运行时找到它。
 
+// App 的画布色（CSS 变量 --p-canvas: #1a1a1a）。
+// 万一 webview 在某些机型 / 安全区组合下没能铺满屏幕，露出来的原生视图
+// 默认是系统白底（纯白，非常刺眼）。把祖先视图刷成画布色，最坏情况也只是
+// 多一条深色边，而不是一条白边。
+static UIColor* HGDarkBackdrop(void) {
+  return [UIColor colorWithRed:0.10196 green:0.10196 blue:0.10196 alpha:1.0];
+}
+
+static void HGPaintBackdrop(WKWebView* wv) {
+  UIColor* dark = HGDarkBackdrop();
+  int guard = 0;
+  UIView* host = wv.superview;
+  while (host != nil && guard++ < 8) {
+    host.backgroundColor = dark;
+    if (host == wv.window) break;
+    host = host.superview;
+  }
+  if (wv.window != nil) {
+    wv.window.backgroundColor = dark;
+  }
+}
+
 __attribute__((used)) extern "C" void hg_disable_webview_safe_area(void* webview) {
   if (webview == NULL) return;
   // Tauri 的 Xcode 工程开了 ARC，void* → ObjC 指针必须用 __bridge。
   WKWebView* wv = (__bridge WKWebView*)webview;
   wv.scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
+  wv.scrollView.contentInset = UIEdgeInsetsZero;
+  HGPaintBackdrop(wv);
 }
 
 // 第二层保险：swizzle WKWebView 加入 window 的时机，任何 WKWebView 一进 view 层级就设好。
@@ -88,6 +112,8 @@ __attribute__((used)) extern "C" void hg_disable_webview_safe_area(void* webview
   [self hg_didMoveToWindow];
   if (self.window != nil) {
     self.scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
+    self.scrollView.contentInset = UIEdgeInsetsZero;
+    HGPaintBackdrop(self);
   }
 }
 

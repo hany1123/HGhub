@@ -7,7 +7,7 @@ import "./index.css";
 import { initPlaybackLog, installPlaybackPageEvents, tracePlayback } from "./playbackDiagnostics";
 import { initAutoLine } from "./autoLine";
 import { APP_VERSION, LOCAL, logLine, platform, webviewVersion } from "./api";
-import { installViewportDiag, readViewportSnapshot } from "./viewportDiag";
+import { buildNo, installViewportDiag, readViewportSnapshot } from "./viewportDiag";
 import Hls from "hls.js";
 installPlaybackPageEvents();
 void initPlaybackLog();
@@ -16,17 +16,20 @@ initAutoLine();
 
 /* 视口诊断叠层：把 innerH/vvH/scrH/docH/sab 直接画在屏幕顶部，截图即可读数。
    底部白块那类问题光看画面分不清是「html 高度不够」还是「WKWebView 视口本身矮一截」，
-   这两组数值一摆出来就能定位。localStorage 设 hghub_vpdiag_off=1 可关掉。 */
+   这两组数值一摆出来就能定位。行首 b= 是 CI 构建号，用来确认装的是哪个包
+   （版本号永远是 1.2.14，光看版本号分不出来）。
+   localStorage 设 hghub_vpdiag_off=1 可关掉。 */
 try {
   if (localStorage.getItem("hghub_vpdiag_off") !== "1") installViewportDiag();
 } catch (e) {
-  /* 隐私模式下 localStorage 可能抛错，忽略即可 */
+  // localStorage 不可用（隐私模式等）时也要装诊断层，否则更难查
+  installViewportDiag();
 }
 
 /* 环境指纹：写进始终记录的 debug.log。用户复制诊断时不用再自报版本、平台、内核版本 */
 const vp = readViewportSnapshot();
 logLine(
-  `[env] ver=${APP_VERSION} platform=${platform} webview=${webviewVersion} ` +
+  `[env] ver=${APP_VERSION} build=${buildNo()} platform=${platform} webview=${webviewVersion} ` +
     `engine=${Hls.isSupported() ? "hls.js" : "native"} ` +
     `mss=${"MediaSource" in window ? "y" : "n"} media=${LOCAL} ` +
     `screen=${screen.width}x${screen.height} dpr=${devicePixelRatio} lang=${navigator.language} ` +
