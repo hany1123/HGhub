@@ -49,7 +49,10 @@ jobs:
           grep -q "127.0.0.1:17650" src-tauri/tauri.conf.json && echo "OK  CSP 放行本地代理" || { echo "FAIL CSP 未放行本地端口"; exit 1; }
           JS=$(ls dist/assets/*.js | head -1)
           grep -q "127.0.0.1:17650" "$JS"    && echo "OK  前端 LOCAL 指向 loopback"   || { echo "FAIL 前端 LOCAL 未改"; exit 1; }
-          grep -q "supportsDvh" "$JS"        && echo "OK  dvh 兜底逻辑在"            || { echo "FAIL 缺 dvh 兜底"; exit 1; }
+          # 注意：不能用 supportsDvh 这类局部变量名做断言 —— esbuild 会 mangle 掉它。
+          # 字符串字面量与 DOM 属性名不会被改写，用它们才稳定。
+          grep -q "100dvh" "$JS"               && echo "OK  JS 里判定了 dvh 支持"      || { echo "FAIL 缺 dvh 判定"; exit 1; }
+          grep -q "visualViewport" "$JS"      && echo "OK  dvh 兜底逻辑在"            || { echo "FAIL 缺 viewport 兜底"; exit 1; }
 
       - name: 生成 iOS 工程（带横竖屏 + ATS）
         run: |
