@@ -791,24 +791,15 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
                 )
               ) : null}
 
-              {/* 竖屏下的快捷操作：统一玻璃胶囊组，图标 + 短标签，细分隔线对齐 */}
-              {isActive && !fs && !clean && !isDesktop && (landscapeVideo || zoom.s > 1.05 || episodes.length > 1) && (
+              {/* 竖屏下的快捷操作：统一玻璃胶囊组，图标 + 短标签，细分隔线对齐
+                  「切集」已挪到右侧操作栏，这里只留「铺满 / 横屏 / 还原」这类
+                  画面控制项 —— 它们必须贴着画面中央，才对得准所指的画面。 */}
+              {isActive && !fs && !clean && !isDesktop && (landscapeVideo || zoom.s > 1.05) && (
                 <div className="absolute left-1/2 -translate-x-1/2 z-20" style={{ top: "64%" }}>
                   <div className="flex items-center gap-0.5 h-8 px-1 rounded-full backdrop-blur-xl elev-2"
                     style={{ background: "rgba(12,15,22,.58)", boxShadow: "inset 0 0 0 1px rgba(255,255,255,.09)" }}>
-                    {episodes.length > 1 && (
-                      <button type="button" aria-pressed={swipeEp}
-                        onClick={() => { setSwipeEp(!swipeEp); toast(swipeEp ? "上下划切集已关闭" : "上下划切集已开启"); }}
-                        className="flex items-center gap-1.5 h-[26px] px-3 rounded-full text-[11px] font-semibold pressable transition-colors duration-150"
-                        style={swipeEp ? { background: "rgba(255,255,255,.14)", color: "#fff" } : { color: "rgba(255,255,255,.72)" }}>
-                        <IVertSwap size={13} />
-                        <span>切集</span>
-                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: swipeEp ? "#5ee7a0" : "rgba(255,255,255,.28)" }} />
-                      </button>
-                    )}
                     {landscapeVideo && (
                       <>
-                        <span className="w-px h-4 mx-0.5" style={{ background: "rgba(255,255,255,.12)" }} />
                         <button type="button" onClick={() => {
                           if (zoom.s > 1.05) { setZoom({ s: 1, x: 0, y: 0, g: false }); setPortraitFit("contain"); }
                           else setPortraitFit((f) => (f === "contain" ? "cover" : "contain"));
@@ -825,23 +816,34 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
                       </>
                     )}
                     {!landscapeVideo && zoom.s > 1.05 && (
-                      <>
-                        <span className="w-px h-4 mx-0.5" style={{ background: "rgba(255,255,255,.12)" }} />
-                        <button type="button" onClick={() => setZoom({ s: 1, x: 0, y: 0, g: false })}
-                          className="flex items-center gap-1 h-[26px] px-3 rounded-full text-[11px] font-semibold pressable transition-colors duration-150"
-                          style={{ color: "rgba(255,255,255,.9)" }}>
-                          还原 {zoom.s.toFixed(1)}x
-                        </button>
-                      </>
+                      <button type="button" onClick={() => setZoom({ s: 1, x: 0, y: 0, g: false })}
+                        className="flex items-center gap-1 h-[26px] px-3 rounded-full text-[11px] font-semibold pressable transition-colors duration-150"
+                        style={{ color: "rgba(255,255,255,.9)" }}>
+                        还原 {zoom.s.toFixed(1)}x
+                      </button>
                     )}
                   </div>
                 </div>
               )}
-              {/* 右侧操作栏（移动端）：收藏 / 评论 / 全屏 / 分享
+              {/* 右侧操作栏（移动端）：切集 / 收藏 / 评论 / 全屏 / 分享
                   颜色写死不跟主题走：浅色主题下这些字必须仍是白色 */}
               {!fs && !clean && !isDesktop && (
                 <div className="absolute right-3 z-20 flex flex-col items-center gap-[16px]"
                   style={{ bottom: `calc(var(--sab, 0px) + ${bottomInset + 92}px)` }}>
+                  {/* 「切集」：上下划切集的开关。放在右侧操作栏里，不再孤零零
+                      悬在画面正中 —— 那边是内容区，悬个胶囊既挡画面又对不上所指。 */}
+                  {episodes.length > 1 && (
+                    <button type="button" aria-pressed={swipeEp} aria-label="切集"
+                      onClick={() => { setSwipeEp(!swipeEp); toast(swipeEp ? "上下划切集已关闭" : "上下划切集已开启"); }}
+                      className="flex flex-col items-center gap-1 pressable">
+                      <span className="relative">
+                        <IVertSwap size={26} className="hg-ink hg-ov-shadow" />
+                        <span className="absolute -right-0.5 -top-0.5 w-1.5 h-1.5 rounded-full"
+                          style={{ background: swipeEp ? "#5ee7a0" : "rgba(255,255,255,.28)" }} />
+                      </span>
+                      <span className="text-[10.5px] hg-ink-2 hg-ov-shadow">切集</span>
+                    </button>
+                  )}
                   <button onClick={onFav} className="flex flex-col items-center gap-1 pressable" aria-pressed={isFav(curId)} aria-label="收藏">
                     {isFav(curId) ? <IStarF size={27} className="hg-gold" /> : <IStar size={27} className="hg-ink hg-ov-shadow" />}
                     <span className="text-[10.5px] hg-ink-2 hg-ov-shadow">收藏</span>
