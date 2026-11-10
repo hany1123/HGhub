@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""往 iOS 工程的 main.mm 里注入 hg_disable_webview_safe_area。
+"""往 iOS 工程的 main.mm 里注入「关掉 WKWebView 自动安全区内缩」的 ObjC 实现。
 
 背景（底部白块的真正根因）：
   iOS 11+ 的 UIScrollView.contentInsetAdjustmentBehavior 默认 .automatic，
@@ -10,13 +10,19 @@
 
   内容再多也画不进那 85px，因为可视区本身就只有 771 高，纯 CSS 补不动，必须动原生。
 
-做法：
-  把 contentInsetAdjustmentBehavior 设成 .never，layout viewport 恢复成整块屏幕，
-  安全区改由 CSS 的 env(safe-area-inset-*) 自己避让。
+做法（两层保险）：
+  1) swizzle WKWebView 的 initWithFrame:configuration: —— 每个 WKWebView 创建的瞬间
+     就把 scrollView.contentInsetAdjustmentBehavior 设成 .never，不依赖调用时机。
+  2) 另外导出一个 C 函数 hg_disable_webview_safe_area(webview)，
+     供 Rust 侧用 dlsym 运行时查找后精确设置主窗口那个 webview。
+     （Rust 侧不能用 extern "C" 直接声明：iOS 是 cargo build 先出静态库、
+      Xcode 之后才编译 main.mm，直接声明会在静态库链接期就报 Undefined symbols。）
 
-为什么用 ObjC 而不是 Rust 直接调 objc2：
-  objc2 / objc2-ui-kit 的 API 会随版本变。这里 Rust 侧只留一个 extern "C" 声明，
-  真正的实现放在 main.mm 里，Rust 侧不碰任何 objc2 API，跨版本零风险。
+注意：
+  - C 函数带 __attribute__((used))，防止 release 构建的 dead-strip 把它删掉，
+    否则 dlsym 找不到。
+  - swizzle 用 +load 自动注册，不需要改 main()。
+  - 脚本幂等：已注入过就跳过。
 
 用法：
   python3 scripts/patch-ios-main-mm.py src-tauri/gen/apple/Sources/<name>/main.mm
@@ -29,6 +35,7 @@ MARKER = "hg_disable_webview_safe_area"
 
 HEADER = """#import <WebKit/WebKit.h>
 #import <UIKit/UIKit.h>
+#import <objc/runtime.h>
 """
 
 IMPL = """
@@ -38,11 +45,53 @@ IMPL = """
 // 把文档的 layout viewport 压矮「上+下安全区」那么多，页面底部画不到的地方
 // 直接露出 WKWebView 的白底。设成 .never 后 layout viewport 恢复成整块屏幕，
 // 安全区交回给 CSS 的 env(safe-area-inset-*) 处理。
-extern "C" void hg_disable_webview_safe_area(void* webview) {
+//
+// 用 __attribute__((used)) 是为了防止 release 构建的 dead-strip 把这个符号删掉 ——
+// Rust 侧要用 dlsym 在运行时找到它。
+
+__attribute__((used)) extern "C" void hg_disable_webview_safe_area(void* webview) {
   if (webview == NULL) return;
-  WKWebView* wv = (__bridge WKWebView*)webview;
+  // 用 C 风格 cast 而不是 __bridge：ARC 与非 ARC 下都能编译，少一个变量。
+  WKWebView* wv = (WKWebView*)webview;
   wv.scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
 }
+
+// 第二层保险：swizzle WKWebView 的创建入口，任何 WKWebView 一诞生就设好，
+// 不依赖谁在什么时候调用。
+@interface WKWebView (HGSafeArea)
++ (void)hg_disableSafeAreaInsets;
+@end
+
+@implementation WKWebView (HGSafeArea)
+
++ (void)load {
+  [self hg_disableSafeAreaInsets];
+}
+
++ (void)hg_disableSafeAreaInsets {
+  static dispatch_once_t once;
+  dispatch_once(&once, ^{
+    Class cls = [WKWebView class];
+    SEL origSel = @selector(initWithFrame:configuration:);
+    SEL swzSel = @selector(hg_initWithFrame:configuration:);
+    Method orig = class_getInstanceMethod(cls, origSel);
+    Method swz = class_getInstanceMethod(cls, swzSel);
+    if (orig != NULL && swz != NULL) {
+      method_exchangeImplementations(orig, swz);
+    }
+  });
+}
+
+- (instancetype)hg_initWithFrame:(CGRect)frame configuration:(WKWebViewConfiguration *)configuration {
+  // 交换之后，这里的 hg_initWithFrame:configuration: 就是原来的实现。
+  self = [self hg_initWithFrame:frame configuration:configuration];
+  if (self != nil) {
+    self.scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
+  }
+  return self;
+}
+
+@end
 """
 
 
