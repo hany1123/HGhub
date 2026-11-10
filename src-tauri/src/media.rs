@@ -16,14 +16,18 @@ use tauri::http::{Response, StatusCode};
 /// 本平台自定义协议的完整基址。
 ///
 /// Tauri 的自定义协议地址随平台不同：Windows / Android 是 `http://<scheme>.localhost`，
-/// macOS / iOS / Linux 是 `<scheme>://localhost`。m3u8 里的分片与 key 地址按它改写。
+/// macOS 是 `<scheme>://localhost`。m3u8 里的分片与 key 地址按它改写。
 /// 前端 `src/api.ts` 的 `LOCAL` 必须与此一致，否则封面与视频全部加载失败。
 #[cfg(any(target_os = "windows", target_os = "android"))]
 pub const LOCAL_ORIGIN: &str = "http://hg.localhost";
-/// Linux 走 loopback HTTP：WebKitGTK 的播放器是 GStreamer，它拿不到自定义 scheme。
-#[cfg(target_os = "linux")]
-pub const LOCAL_ORIGIN: &str = crate::linux_http::ORIGIN;
-#[cfg(not(any(target_os = "windows", target_os = "android", target_os = "linux")))]
+/// Linux 与 iOS 走 loopback HTTP：
+/// * Linux —— WebKitGTK 的播放器是 GStreamer，它拿不到自定义 scheme；
+/// * iOS 16.x —— 系统没有 MSE，前端只能走原生 HLS，而 AVFoundation 同样只认 http/https。
+///
+/// 详见 [`crate::local_http`]。
+#[cfg(any(target_os = "linux", target_os = "ios"))]
+pub const LOCAL_ORIGIN: &str = crate::local_http::ORIGIN;
+#[cfg(not(any(target_os = "windows", target_os = "android", target_os = "linux", target_os = "ios")))]
 pub const LOCAL_ORIGIN: &str = "hg://localhost";
 
 const IMG_KEY: &[u8] = b"f5d965df75336270";

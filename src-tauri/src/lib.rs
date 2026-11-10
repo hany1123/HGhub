@@ -1,7 +1,6 @@
 mod api;
 mod lines;
-#[cfg(target_os = "linux")]
-mod linux_http;
+mod local_http;
 mod logging;
 #[cfg(target_os = "macos")]
 mod macos_titlebar;
@@ -64,9 +63,10 @@ pub fn run() {
                 state.session.bind(dir);
             }
             // Linux 的 <video> 由 GStreamer 播放，它只认常规 HTTP scheme；
-            // 这里起一个 loopback 代理，前端与 m3u8 改写都指向它（见 linux_http.rs）
-            #[cfg(target_os = "linux")]
-            linux_http::start();
+            // iOS 16.x 没有 MSE，只能走原生 HLS，而 AVFoundation 也只认 http/https。
+            // 两者都改为用 loopback 上的 HTTP 代理（见 local_http.rs）。
+            #[cfg(any(target_os = "linux", target_os = "ios"))]
+            local_http::start();
             // macOS 主窗口在此创建：先按系统红绿灯尺寸算出居中位置（见 macos_titlebar.rs）
             #[cfg(target_os = "macos")]
             macos_titlebar::create_main_window(app)?;
@@ -80,6 +80,11 @@ pub fn run() {
                         // Android 上自定义协议表现为 http://<scheme>.localhost，WebView 有时把它
                         // 当成一次导航进来。这是进程内的媒体代理地址，不出网，严格模式也不该拦。
                         || (matches!(url.scheme(), "http" | "https") && host.ends_with(".localhost"))
+                        // loopback 媒体代理（Linux / iOS）：原生播放器会把它当资源地址拉起，
+                        // 同样只通本机，严格模式也不该拦。
+                        || (url.scheme() == "http"
+                            && host == "127.0.0.1"
+                            && url.port() == Some(crate::local_http::PORT))
                         || allowed_frontend_origin(&url.origin().ascii_serialization())
                         || (!network_policy::strict_security()
                             && matches!(url.scheme(), "http" | "https"))
